@@ -1,0 +1,26 @@
+[Unit]
+Description=MediDispense Pi Backend (Flask API + State Machine)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=fens402
+WorkingDirectory=/home/fens402/pi_backend
+
+ExecStart=/usr/bin/python3 /home/fens402/pi_backend/api_server.py
+
+# Force-kill if it doesn't stop within 5 seconds
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=5
+
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SupplementaryGroups=video
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "381413804782",
+    "project_id": "drug-dispenser-7f379",
+    "storage_bucket": "drug-dispenser-7f379.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:381413804782:android:aed32b77c5971d477a01ff",
+        "android_client_info": {
+          "package_name": "com.example.fens402_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA5SVSZ0hw-chKgcoForILs6LNCHVtxm2w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

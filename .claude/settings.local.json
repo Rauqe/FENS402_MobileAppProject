@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m py_compile motor_controller.py test_motor.py servo_control.py)",
+      "Bash(MOTOR_DRY_RUN=1 python3 -c \":*)"
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+name: fens402_app
+description: "Smart Drug Dispenser - Flutter companion app (FENS402)"
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # ── BLE (Bluetooth Low Energy) ───────────────────────────────────────────────
+  flutter_blue_plus: ^1.35.3
+
+  # ── Camera & Face Detection (ML Kit) ─────────────────────────────────────────
+  camera: ^0.11.1
+  google_mlkit_face_detection: ^0.12.0
+
+  # ── Biometric (fingerprint / device-level) — fallback auth ───────────────────
+  local_auth: ^2.3.0
+
+  # ── Firebase ─────────────────────────────────────────────────────────────────
+  firebase_core: ^3.13.0
+  firebase_database: ^11.3.4
+  firebase_auth: ^5.5.2
+  firebase_messaging: ^15.2.4
+
+  # ── Local storage (SQLite) — offline-first & Sync Queue ──────────────────────
+  sqflite: ^2.4.2
+  path: ^1.9.1
+
+  # ── Connectivity check (online vs. offline decision) ─────────────────────────
+  connectivity_plus: ^6.1.4
+
+  # ── Permissions runtime handler ───────────────────────────────────────────────
+  permission_handler: ^11.4.0
+
+  # ── Unique IDs for local records ──────────────────────────────────────────────
+  uuid: ^4.5.1
+  http: ^1.6.0
+
+  # ── Barcode scanning (camera-based) ─────────────────────────────────────────
+  mobile_scanner: ^6.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

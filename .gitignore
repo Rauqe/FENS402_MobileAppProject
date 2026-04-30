@@ -1,0 +1,68 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Backend lives in separate repo — do not vendor here
+FENS-Drug_Dispenser/
+
+# Secrets & local data (Pi / API keys)
+.env
+**/.env
+!**/.env.example
+
+# Pi backend binaries & personal DB
+pi_backend/faces.db
+pi_backend/*.db-journal
+pi_backend/face_landmarker.task
+
+# Accidental duplicate files (macOS / sync glitches)
+**/* 2.lock
+**/* 3.lock
+**/Flutter 2.podspec
+**/Flutter 3.podspec
+**/flutter_export_environment 2.sh
+
+# Stray Flutter plugin cache copies (duplicate filenames with spaces)
+.flutter-plugins-dependencies*
