@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../models/patient.dart';
 import '../services/api_service.dart';
 import '../services/dispenser_service.dart';
+import 'live_kvs_viewer.dart';
 
 class DispenserControlScreen extends StatefulWidget {
   const DispenserControlScreen({super.key});
@@ -123,28 +123,36 @@ class _DispenserControlScreenState extends State<DispenserControlScreen> {
     }
   }
 
+  /// **Open Camera** — caregiver watches the live Pi feed via AWS Kinesis Video
+  /// (HLS from `/stream/live`). Does not call the Pi BLE/API camera endpoint.
   Future<void> _openCamera() async {
-    if (_dispenser.snapshot.state == DispenserState.waitingForPatient) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Camera is already active — patient can authenticate now'),
-          backgroundColor: Colors.blue,
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const PopScope(
+        canPop: false,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+    );
+    try {
+      final hlsUrl = await _api.getLiveStreamHlsUrl();
+      if (mounted) Navigator.of(context).pop();
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => LiveKvsViewerScreen(hlsUrl: hlsUrl),
         ),
       );
-      return;
-    }
-    final result = await _dispenser.openCamera();
-    await _dispenser.poll();
-    if (!mounted) return;
-    final newState = _dispenser.snapshot.state;
-    if (result.ok || newState == DispenserState.waitingForPatient) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Camera active — waiting for patient'), backgroundColor: Colors.green),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message.isEmpty ? 'Could not open camera' : result.message)),
-      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open live stream: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 

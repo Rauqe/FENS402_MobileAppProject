@@ -1,6 +1,8 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/app_session.dart';
+import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'caregiver_dashboard.dart';
 
@@ -15,11 +17,13 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
-  final _formKey        = GlobalKey<FormState>();
-  final _emailCtrl      = TextEditingController();
-  final _passwordCtrl   = TextEditingController();
-  final _confirmCtrl    = TextEditingController();
-  final _modelIdCtrl    = TextEditingController();
+  final _formKey       = GlobalKey<FormState>();
+  final _firstNameCtrl = TextEditingController();
+  final _lastNameCtrl  = TextEditingController();
+  final _emailCtrl     = TextEditingController();
+  final _passwordCtrl  = TextEditingController();
+  final _confirmCtrl   = TextEditingController();
+  final _modelIdCtrl   = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirm  = true;
@@ -27,6 +31,8 @@ class _SignUpPageState extends State<SignUpPage> {
 
   @override
   void dispose() {
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
@@ -38,14 +44,18 @@ class _SignUpPageState extends State<SignUpPage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
-    final email    = _emailCtrl.text.trim();
-    final password = _passwordCtrl.text;
-    final modelId  = _modelIdCtrl.text.trim();
+    final email     = _emailCtrl.text.trim();
+    final password  = _passwordCtrl.text;
+    final firstName = _firstNameCtrl.text.trim();
+    final lastName  = _lastNameCtrl.text.trim();
+    final modelId   = _modelIdCtrl.text.trim();
 
     try {
       final result = await AuthService.instance.signUp(
         email: email,
         password: password,
+        firstName: firstName,
+        lastName: lastName,
         modelId: modelId,
       );
 
@@ -61,7 +71,18 @@ class _SignUpPageState extends State<SignUpPage> {
         return;
       }
 
-      // Signup success → go to caregiver dashboard
+      // FCM token'ı kaydet
+      try {
+        final token = await FirebaseMessaging.instance.getToken();
+        if (token != null) {
+          await ApiService.registerFcmToken(token,
+              email: email, role: 'caregiver');
+          debugPrint('[FCM] Token registered after signup for $email');
+        }
+      } catch (e) {
+        debugPrint('[FCM] Token registration failed: $e');
+      }
+
       AppSession.instance.loginAsCaregiver();
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const CaregiverDashboard()),
@@ -136,6 +157,47 @@ class _SignUpPageState extends State<SignUpPage> {
                     ),
                     const SizedBox(height: 28),
 
+                    // First Name + Last Name (yan yana)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _firstNameCtrl,
+                            textInputAction: TextInputAction.next,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: const InputDecoration(
+                              labelText: 'First Name',
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Required';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _lastNameCtrl,
+                            textInputAction: TextInputAction.next,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: const InputDecoration(
+                              labelText: 'Last Name',
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Required';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
                     // Email
                     TextFormField(
                       controller: _emailCtrl,
@@ -202,7 +264,7 @@ class _SignUpPageState extends State<SignUpPage> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Model ID — required for caregiver
+                    // Model ID
                     TextFormField(
                       controller: _modelIdCtrl,
                       textInputAction: TextInputAction.done,
@@ -211,8 +273,7 @@ class _SignUpPageState extends State<SignUpPage> {
                         FilteringTextInputFormatter.allow(
                             RegExp(r'[A-Za-z0-9\-]')),
                         TextInputFormatter.withFunction((old, next) =>
-                            next.copyWith(
-                                text: next.text.toUpperCase())),
+                            next.copyWith(text: next.text.toUpperCase())),
                       ],
                       decoration: const InputDecoration(
                         labelText: 'Model ID *',
@@ -257,14 +318,14 @@ class _SignUpPageState extends State<SignUpPage> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Info box about patient accounts
+                    // Info box
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: cs.secondaryContainer.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: cs.secondary.withOpacity(0.3)),
+                        border:
+                            Border.all(color: cs.secondary.withOpacity(0.3)),
                       ),
                       child: Row(
                         children: [
@@ -292,8 +353,8 @@ class _SignUpPageState extends State<SignUpPage> {
                       children: [
                         Text(
                           'Already have an account?',
-                          style: TextStyle(
-                              color: cs.onSurface.withOpacity(0.7)),
+                          style:
+                              TextStyle(color: cs.onSurface.withOpacity(0.7)),
                         ),
                         TextButton(
                           onPressed: () => Navigator.of(context).pop(),

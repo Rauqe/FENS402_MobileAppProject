@@ -6,9 +6,13 @@ Wants=network.target
 [Service]
 Type=simple
 User=fens402
-WorkingDirectory=/home/fens402/pi_backend
+WorkingDirectory=/home/fens402/dispenser/pi_backend
 
-ExecStart=/usr/bin/python3 /home/fens402/pi_backend/api_server.py
+# venv içindeki Python ile çalışır (Flask ve tüm pip paketleri burada)
+ExecStart=/home/fens402/dispenser/pi_backend/.venv/bin/python3 /home/fens402/dispenser/pi_backend/api_server.py
+
+Environment=HOME=/home/fens402
+EnvironmentFile=-/home/fens402/dispenser/pi_backend/.env
 
 # Force-kill if it doesn't stop within 5 seconds
 KillMode=mixed

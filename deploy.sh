@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploy pi_backend to Raspberry Pi via rsync + auto-restart
 
-PI_HOST="${1:-172.20.10.3}"
+PI_HOST="${1:-192.168.0.16}"
 PI_USER="${2:-fens402}"
 PI_PATH="~/pi_backend"
 

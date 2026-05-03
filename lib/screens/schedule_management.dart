@@ -560,6 +560,11 @@ class _ScheduleManagementScreenState
 
                         final sortedDays = selectedWeekDays.toList()
                           ..sort();
+                        // Daily / alternate: backend must not get Mon–Fri default
+                        // (0–4) as week_days — some APIs treat that as "weekdays only".
+                        final weekDaysForApi = frequencyType == 'weekly'
+                            ? sortedDays.join(',')
+                            : '';
                         final startStr = startDate
                             .toIso8601String()
                             .split('T')
@@ -574,7 +579,7 @@ class _ScheduleManagementScreenState
                             scheduleId: editScheduleId!,
                             plannedTime: _fmtTime(selectedTime),
                             frequencyType: frequencyType,
-                            weekDays: sortedDays.join(','),
+                            weekDays: weekDaysForApi,
                             startDate: startStr,
                             endDate: endStr,
                             windowSeconds: windowSeconds,
@@ -585,7 +590,7 @@ class _ScheduleManagementScreenState
                             slotId: selectedSlotId!,
                             plannedTime: _fmtTime(selectedTime),
                             frequencyType: frequencyType,
-                            weekDays: sortedDays.join(','),
+                            weekDays: weekDaysForApi,
                             startDate: startStr,
                             endDate: endStr,
                             windowSeconds: windowSeconds,

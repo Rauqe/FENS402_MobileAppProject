@@ -47,19 +47,22 @@ class PiCamera:
         except Exception as e:
             _log(f"picamera2 not available: {e}")
 
-        # Fall back to OpenCV V4L2
+        # Fall back to OpenCV V4L2 (try common indices; CSI vs USB order varies)
         try:
             import cv2
-            cap = cv2.VideoCapture(0)
-            if cap.isOpened():
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
-                self._cam = cap
-                self._backend = "cv2"
-                self._opened = True
-                _log(f"Opened via OpenCV ({self._width}x{self._height})")
-                return True
-            cap.release()
+            for idx in (0, 1, 2):
+                cap = cv2.VideoCapture(idx)
+                if cap.isOpened():
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
+                    self._cam = cap
+                    self._backend = "cv2"
+                    self._opened = True
+                    _log(
+                        f"Opened via OpenCV device {idx} ({self._width}x{self._height})"
+                    )
+                    return True
+                cap.release()
         except Exception as e:
             _log(f"OpenCV not available: {e}")
 

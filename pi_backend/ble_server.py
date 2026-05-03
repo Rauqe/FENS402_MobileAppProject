@@ -61,6 +61,9 @@ from datetime import datetime
 from gi.repository import GLib
 
 import os
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 try:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
@@ -74,7 +77,7 @@ except ImportError:
     HAS_REQUESTS = False
 
 try:
-    from face_auth_headless import authenticate_user
+    from face_authentication.headless_auth import authenticate_user
     FACE_AUTH_AVAILABLE = True
 except ImportError:
     FACE_AUTH_AVAILABLE = False

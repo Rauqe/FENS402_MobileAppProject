@@ -6,17 +6,16 @@ import '../models/medication.dart';
 import '../models/medication_schedule.dart';
 import '../models/slot_medication.dart';
 import 'dispenser_service.dart' show kPiBaseUrl;
+import 'auth_service.dart' show kAwsApiBaseUrl;
 
-const Duration kApiTimeout  = Duration(seconds: 8);
-const Duration kAuthTimeout = Duration(seconds: 15); // auth ops involve hashing
+const Duration kApiTimeout = Duration(seconds: 10);
+const Duration kAuthTimeout = Duration(seconds: 15);
 
 class ApiException implements Exception {
   final int statusCode;
   final String message;
   const ApiException(this.statusCode, this.message);
 
-  /// Backend'den gelen JSON body'sini parse ederek okunabilir mesaj döner.
-  /// {"ok": false, "message": "..."} formatını destekler.
   String get displayMessage {
     try {
       final decoded = jsonDecode(message);
@@ -37,12 +36,19 @@ class ApiService {
 
   final _client = http.Client();
 
-  Uri _uri(String path) => Uri.parse('$kPiBaseUrl/api$path');
+  // AWS: /patients, /medications, /schedules, /slots, /dispensing-logs, /auth, /kvs-live/...
+  Uri _awsUri(String path) => Uri.parse('$kAwsApiBaseUrl$path');
 
-  Future<Map<String, dynamic>> _get(String path) async {
-    debugPrint('[API] GET /api$path');
+  // Pi: /api/sync, /api/state, /api/face, /api/health
+  Uri _piUri(String path) => Uri.parse('$kPiBaseUrl/api$path');
+
+  // ── HTTP helpers ──────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> _get(String path, {bool pi = false}) async {
+    final uri = pi ? _piUri(path) : _awsUri(path);
+    debugPrint('[API] GET $uri');
     final response = await _client
-        .get(_uri(path), headers: {'Accept': 'application/json'})
+        .get(uri, headers: {'Accept': 'application/json'})
         .timeout(kApiTimeout);
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -51,17 +57,16 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> _post(
-      String path, Map<String, dynamic> body) async {
-    debugPrint('[API] POST /api$path');
+      String path, Map<String, dynamic> body, {bool pi = false}) async {
+    final uri = pi ? _piUri(path) : _awsUri(path);
+    debugPrint('[API] POST $uri');
     final response = await _client
-        .post(
-          _uri(path),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(body),
-        )
+        .post(uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(body))
         .timeout(kApiTimeout);
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -70,17 +75,16 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> _put(
-      String path, Map<String, dynamic> body) async {
-    debugPrint('[API] PUT /api$path');
+      String path, Map<String, dynamic> body, {bool pi = false}) async {
+    final uri = pi ? _piUri(path) : _awsUri(path);
+    debugPrint('[API] PUT $uri');
     final response = await _client
-        .put(
-          _uri(path),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(body),
-        )
+        .put(uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(body))
         .timeout(kApiTimeout);
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -88,10 +92,11 @@ class ApiService {
     throw ApiException(response.statusCode, response.body);
   }
 
-  Future<Map<String, dynamic>> _delete(String path) async {
-    debugPrint('[API] DELETE /api$path');
+  Future<Map<String, dynamic>> _delete(String path, {bool pi = false}) async {
+    final uri = pi ? _piUri(path) : _awsUri(path);
+    debugPrint('[API] DELETE $uri');
     final response = await _client
-        .delete(_uri(path), headers: {'Accept': 'application/json'})
+        .delete(uri, headers: {'Accept': 'application/json'})
         .timeout(kApiTimeout);
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -103,14 +108,14 @@ class ApiService {
 
   Future<bool> healthCheck() async {
     try {
-      final data = await _get('/health');
+      final data = await _get('/health', pi: true);
       return data['ok'] == true;
     } catch (_) {
       return false;
     }
   }
 
-  // ── Patients ──────────────────────────────────────────────────────────────
+  // ── Patients → AWS ────────────────────────────────────────────────────────
 
   Future<List<Patient>> getAllPatients() async {
     final data = await _get('/patients');
@@ -129,17 +134,39 @@ class ApiService {
     required String firstName,
     required String lastName,
     String? dateOfBirth,
+    String? email,
+    String? password,
   }) async {
     final data = await _post('/patients', {
       'first_name': firstName,
       'last_name': lastName,
       if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+      if (email != null) 'email': email,
+      if (password != null) 'password': password,
     });
     return Patient(
       patientId: data['patient_id'] as String,
       firstName: data['first_name'] as String,
       lastName: data['last_name'] as String,
     );
+  }
+
+  Future<Map<String, dynamic>> createPatientWithAccount({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String password,
+    required String caregiverId,
+    String? dateOfBirth,
+  }) async {
+    return _post('/auth/patient/create', {
+      'first_name': firstName,
+      'last_name': lastName,
+      'email': email,
+      'password': password,
+      'caregiver_id': caregiverId,
+      if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+    });
   }
 
   Future<Patient> updatePatient({
@@ -164,14 +191,12 @@ class ApiService {
     await _delete('/patients/$patientId');
   }
 
-  // ── Medications ───────────────────────────────────────────────────────────
+  // ── Medications → AWS ─────────────────────────────────────────────────────
 
-  /// Look up medication details by barcode (any patient).
-  /// Returns null if not found. Used to auto-fill the Add Medication form.
   Future<Medication?> getMedicationByBarcode(String barcode) async {
     try {
-      final data = await _get(
-          '/medications/barcode/${Uri.encodeComponent(barcode)}');
+      final data =
+          await _get('/medications/barcode/${Uri.encodeComponent(barcode)}');
       final m = data['medication'] as Map<String, dynamic>;
       return Medication.fromJson(m);
     } on ApiException catch (e) {
@@ -181,7 +206,7 @@ class ApiService {
   }
 
   Future<List<Medication>> getPatientMedications(String patientId) async {
-    final data = await _get('/medications/patient/$patientId');
+    final data = await _get('/medications/$patientId');
     final list = data['medications'] as List<dynamic>;
     return list
         .map((json) => Medication.fromJson(json as Map<String, dynamic>))
@@ -219,7 +244,6 @@ class ApiService {
   }) async {
     return _put('/medications/$medicationId', {
       if (medicationName != null) 'medication_name': medicationName,
-      // Always send barcode/colorShape so the user can clear them (null → SQL NULL)
       'pill_barcode': pillBarcode,
       'pill_color_shape': pillColorShape,
       if (remainingCount != null) 'remaining_count': remainingCount,
@@ -232,21 +256,18 @@ class ApiService {
     await _delete('/medications/$medicationId');
   }
 
-  // ── Slots ─────────────────────────────────────────────────────────────────
+  // ── Slots → AWS ───────────────────────────────────────────────────────────
 
-  /// Returns all 14 slots with their status, patient binding, and medications.
   Future<List<Map<String, dynamic>>> getAllSlots() async {
     final data = await _get('/slots');
     final list = data['slots'] as List<dynamic>;
     return list.cast<Map<String, dynamic>>();
   }
 
-  /// Returns available (unscheduled, empty) slot IDs and occupied slot info.
   Future<Map<String, dynamic>> getAvailableSlots() async {
     return _get('/slots/available');
   }
 
-  /// Returns medications defined for a specific slot.
   Future<List<SlotMedication>> getSlotMedications(int slotId) async {
     final data = await _get('/slots/$slotId/medications');
     final list = data['medications'] as List<dynamic>;
@@ -255,16 +276,13 @@ class ApiService {
         .toList();
   }
 
-  /// Define (replace) the medication list for a slot.
-  /// [medications] is a list of SlotMedication objects.
   Future<Map<String, dynamic>> setSlotMedications(
       int slotId, List<SlotMedication> medications) async {
-    return _post('/slots/$slotId/medications', {
-      'medications': medications.map((m) => m.toJson()).toList(),
-    });
+    return _post('/slots/$slotId/medications',
+        {'medications': medications.map((m) => m.toJson()).toList()});
   }
 
-  // ── Schedules ─────────────────────────────────────────────────────────────
+  // ── Schedules → AWS ───────────────────────────────────────────────────────
 
   Future<List<MedicationSchedule>> getPatientSchedules(
       String patientId) async {
@@ -276,18 +294,6 @@ class ApiService {
         .toList();
   }
 
-  /// Create a new schedule for one slot.
-  ///
-  /// [slotId]         — which physical slot (0-13)
-  /// [patientId]      — patient this dose belongs to
-  /// [plannedTime]    — "HH:MM"
-  /// [frequencyType]  — "daily" | "weekly" | "alternate"
-  /// [weekDays]       — "0,2,4" (Mon=0 … Sun=6), only for weekly
-  /// [startDate]      — "YYYY-MM-DD"
-  /// [endDate]        — "YYYY-MM-DD" or null
-  /// [windowSeconds]  — auth window (30-3600, default 300)
-  /// [groupId]        — optional, to link related schedules in the UI
-  /// [medications]    — list of SlotMedication entries for this slot
   Future<Map<String, dynamic>> createSchedule({
     required int slotId,
     required String patientId,
@@ -314,9 +320,6 @@ class ApiService {
     });
   }
 
-  /// Update a single schedule row by its scheduleId.
-  /// Can change: plannedTime, frequencyType, weekDays, startDate, endDate,
-  ///             windowSeconds, medications.
   Future<Map<String, dynamic>> updateSchedule({
     required String scheduleId,
     String? plannedTime,
@@ -339,8 +342,6 @@ class ApiService {
     });
   }
 
-  /// Update metadata for all schedules sharing a group_id.
-  /// Optionally replaces medications on all slots in the group.
   Future<Map<String, dynamic>> updateScheduleGroup({
     required String groupId,
     String? plannedTime,
@@ -363,12 +364,11 @@ class ApiService {
     });
   }
 
-  /// Toggle is_active for all schedules in a group.
   Future<Map<String, dynamic>> toggleScheduleGroup(String groupId) async {
-    debugPrint('[API] PATCH /api/schedules/group/$groupId/active');
+    debugPrint('[API] PATCH /schedules/group/$groupId/active');
     final response = await _client
         .patch(
-          _uri('/schedules/group/$groupId/active'),
+          _awsUri('/schedules/group/$groupId/active'),
           headers: {'Accept': 'application/json'},
         )
         .timeout(kApiTimeout);
@@ -378,12 +378,11 @@ class ApiService {
     throw ApiException(response.statusCode, response.body);
   }
 
-  /// Toggle is_active for a single schedule.
   Future<Map<String, dynamic>> toggleSchedule(String scheduleId) async {
-    debugPrint('[API] PATCH /api/schedules/$scheduleId/active');
+    debugPrint('[API] PATCH /schedules/$scheduleId/active');
     final response = await _client
         .patch(
-          _uri('/schedules/$scheduleId/active'),
+          _awsUri('/schedules/$scheduleId/active'),
           headers: {'Accept': 'application/json'},
         )
         .timeout(kApiTimeout);
@@ -393,32 +392,28 @@ class ApiService {
     throw ApiException(response.statusCode, response.body);
   }
 
-  /// Delete all schedules in a group.
   Future<void> deleteScheduleGroup(String groupId) async {
     await _delete('/schedules/group/$groupId');
   }
 
-  /// Delete a single schedule row.
   Future<void> deleteSchedule(String scheduleId) async {
     await _delete('/schedules/$scheduleId');
   }
 
-  // ── Cloud Sync ────────────────────────────────────────────────────────────
+  // ── Cloud Sync → Pi ───────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getSyncStatus() async {
-    return _get('/sync/status');
+    return _get('/sync/status', pi: true);
   }
 
   Future<Map<String, dynamic>> triggerSync() async {
     final response = await _client
-        .post(
-          _uri('/sync'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: '{}',
-        )
+        .post(_piUri('/sync'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: '{}')
         .timeout(const Duration(seconds: 30));
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -428,7 +423,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> syncPush() async {
     final response = await _client
-        .post(_uri('/sync/push'),
+        .post(_piUri('/sync/push'),
             headers: {'Accept': 'application/json'}, body: '{}')
         .timeout(const Duration(seconds: 30));
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -439,7 +434,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> syncPull() async {
     final response = await _client
-        .post(_uri('/sync/pull'),
+        .post(_piUri('/sync/pull'),
             headers: {'Accept': 'application/json'}, body: '{}')
         .timeout(const Duration(seconds: 30));
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -448,13 +443,22 @@ class ApiService {
     throw ApiException(response.statusCode, response.body);
   }
 
-  // ── Dispensing Logs ───────────────────────────────────────────────────────
+  // ── Dispensing Logs → AWS ─────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getDispensingLogs(
       String patientId) async {
     final data = await _get('/dispensing-logs/$patientId');
     final list = data['logs'] as List<dynamic>;
     return list.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> getPatientAnalytics({
+    required String patientId,
+    required String startDate,
+    required String endDate,
+  }) async {
+    return _get(
+        '/dispensing-logs/$patientId/analytics?start_date=$startDate&end_date=$endDate');
   }
 
   Future<Map<String, dynamic>> createDispensingLog({
@@ -475,7 +479,19 @@ class ApiService {
     });
   }
 
-  // ── Patient Accounts ──────────────────────────────────────────────────────
+  // ── Kinesis Video (HLS) → AWS ─────────────────────────────────────────────
+
+  /// Returns a short-lived HLS session URL for the dispenser live KVS stream.
+  Future<String> getLiveStreamHlsUrl() async {
+    final data = await _get('/kvs-live/stream/live');
+    final url = data['hls_url'] as String?;
+    if (url == null || url.isEmpty) {
+      throw ApiException(500, 'Missing hls_url in response');
+    }
+    return url;
+  }
+
+  // ── Patient Accounts → AWS ────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getPatientAccounts() async {
     final data = await _get('/auth/patient-accounts');
@@ -488,10 +504,10 @@ class ApiService {
     required String email,
     required String password,
   }) async {
-    debugPrint('[API] POST /api/auth/patient-account');
+    debugPrint('[API] POST /auth/patient-account → AWS');
     final response = await _client
         .post(
-          _uri('/auth/patient-account'),
+          _awsUri('/auth/patient-account'),
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -509,23 +525,24 @@ class ApiService {
     throw ApiException(response.statusCode, response.body);
   }
 
-  // ── Notifications ─────────────────────────────────────────────────────────
+  // ── Notifications → AWS ───────────────────────────────────────────────────
 
-  static Future<void> registerFcmToken(String token,
-      {String? roleId, String? email}) async {
-    const awsApiUrl =
-        'https://s766ccq1c7.execute-api.eu-north-1.amazonaws.com/default';
+  static Future<void> registerFcmToken(
+    String token, {
+    String? email,
+    String? role, // "caregiver" or "patient"
+  }) async {
     debugPrint('[API] Registering FCM token with AWS backend');
     final response = await http.post(
-      Uri.parse('$awsApiUrl/notifications/register-token'),
+      Uri.parse('$kAwsApiBaseUrl/notifications/register-token'),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
       body: jsonEncode({
         'fcm_token': token,
-        if (roleId != null) 'role_id': roleId,
         if (email != null) 'email': email,
+        if (role != null) 'role': role,
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {

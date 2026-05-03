@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../core/app_session.dart';
 import '../models/patient.dart';
 import '../services/api_service.dart';
+import 'patient_analytics.dart';
 import '../services/dispenser_service.dart' show kPiBaseUrl;
 
 class PatientManagementScreen extends StatefulWidget {
@@ -237,8 +239,14 @@ class _PatientManagementScreenState extends State<PatientManagementScreen> {
 
   void _showAddEditDialog({Patient? existing}) {
     final firstCtrl = TextEditingController(text: existing?.firstName ?? '');
-    final lastCtrl  = TextEditingController(text: existing?.lastName ?? '');
-    DateTime? dob   = existing?.dateOfBirth;
+    final lastCtrl = TextEditingController(text: existing?.lastName ?? '');
+    final emailCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    DateTime? dob = existing?.dateOfBirth;
+    bool obscurePass = true;
+    bool obscureConf = true;
+    final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
@@ -246,41 +254,128 @@ class _PatientManagementScreenState extends State<PatientManagementScreen> {
         builder: (ctx, setDlg) => AlertDialog(
           title: Text(existing == null ? 'Add Patient' : 'Edit Patient'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: firstCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'First Name *'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: lastCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Last Name *'),
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Date of Birth'),
-                  subtitle: Text(
-                    dob != null
-                        ? '${dob!.day}/${dob!.month}/${dob!.year}'
-                        : 'Not set',
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: firstCtrl,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'First Name *'),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
-                  trailing: const Icon(Icons.calendar_today),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: dob ?? DateTime(1980),
-                      firstDate: DateTime(1920),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) setDlg(() => dob = picked);
-                  },
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: lastCtrl,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'Last Name *'),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Date of Birth'),
+                    subtitle: Text(
+                      dob != null
+                          ? '${dob!.day}/${dob!.month}/${dob!.year}'
+                          : 'Not set',
+                    ),
+                    trailing: const Icon(Icons.calendar_today),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: dob ?? DateTime(1980),
+                        firstDate: DateTime(1920),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) setDlg(() => dob = picked);
+                    },
+                  ),
+                  if (existing == null) ...[
+                    const Divider(height: 24),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'App Login',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email *',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                      validator: (v) {
+                        final e = v?.trim() ?? '';
+                        if (e.isEmpty) return 'Required';
+                        if (!e.contains('@') || e.startsWith('@')) {
+                          return 'Enter a valid email';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: passCtrl,
+                      obscureText: obscurePass,
+                      decoration: InputDecoration(
+                        labelText: 'Password *',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        helperText: 'Min 8 chars, upper, lower, number',
+                        suffixIcon: IconButton(
+                          icon: Icon(obscurePass
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined),
+                          onPressed: () =>
+                              setDlg(() => obscurePass = !obscurePass),
+                        ),
+                      ),
+                      validator: (v) {
+                        final p = v ?? '';
+                        if (p.isEmpty) return 'Required';
+                        if (p.length < 8) return 'Min 8 characters';
+                        if (!p.contains(RegExp(r'[A-Z]')))
+                          return 'Need uppercase';
+                        if (!p.contains(RegExp(r'[a-z]')))
+                          return 'Need lowercase';
+                        if (!p.contains(RegExp(r'[0-9]'))) return 'Need a number';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: confirmCtrl,
+                      obscureText: obscureConf,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm Password *',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureConf
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined),
+                          onPressed: () =>
+                              setDlg(() => obscureConf = !obscureConf),
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Required';
+                        if (v != passCtrl.text) return 'Passwords do not match';
+                        return null;
+                      },
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -290,8 +385,9 @@ class _PatientManagementScreenState extends State<PatientManagementScreen> {
             ),
             FilledButton(
               onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
                 final first = firstCtrl.text.trim();
-                final last  = lastCtrl.text.trim();
+                final last = lastCtrl.text.trim();
                 if (first.isEmpty || last.isEmpty) return;
                 Navigator.pop(ctx);
 
@@ -299,14 +395,19 @@ class _PatientManagementScreenState extends State<PatientManagementScreen> {
 
                 try {
                   if (existing == null) {
-                    // CREATE → then face registration
-                    final newPatient = await _api.createPatient(
+                    final caregiverId =
+                        AppSession.instance.caregiverId ?? '';
+
+                    await _api.createPatientWithAccount(
                       firstName: first,
                       lastName: last,
+                      email: emailCtrl.text.trim(),
+                      password: passCtrl.text,
+                      caregiverId: caregiverId,
                       dateOfBirth: dobStr,
                     );
+
                     await _loadAll();
-                    if (mounted) _startFaceRegistration(newPatient);
                   } else {
                     await _api.updatePatient(
                       patientId: existing.patientId,
@@ -324,7 +425,7 @@ class _PatientManagementScreenState extends State<PatientManagementScreen> {
                   }
                 }
               },
-              child: Text(existing == null ? 'Add & Register Face' : 'Save'),
+              child: Text(existing == null ? 'Add' : 'Save'),
             ),
           ],
         ),
@@ -691,6 +792,18 @@ class _PatientManagementScreenState extends State<PatientManagementScreen> {
                       textStyle: const TextStyle(fontSize: 13),
                     ),
                   ),
+                IconButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            PatientAnalyticsScreen(patient: patient),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.insights_rounded, size: 20),
+                  tooltip: 'Analytics',
+                ),
                 // Edit
                 IconButton(
                   onPressed: () => _showAddEditDialog(existing: patient),

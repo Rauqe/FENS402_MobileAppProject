@@ -1,136 +1,274 @@
 from fastapi import APIRouter, Depends, HTTPException
 from api.database import get_aws
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 router = APIRouter()
 
 
+class SlotMedicationItem(BaseModel):
+    medication_id: str
+    medication_name: str
+    target_count: int = 0
+    loaded_count: int = 0
+
+
 class ScheduleCreate(BaseModel):
-    """
-    Schedule creation data.
-    Will be used to create a new schedule in the AWS database.
-    """
-    medication_id:   str
-    planned_time:    str        # "HH:MM" format
-    dosage_quantity: Optional[int] = 1
-    is_active:       Optional[bool] = True
-    start_date:      str        # "YYYY-MM-DD" format
-    end_date:        Optional[str] = None
+    patient_id: str
+    slot_id: int
+    planned_time: str
+    frequency_type: str = "daily"
+    week_days: Optional[str] = ""
+    start_date: str
+    end_date: Optional[str] = None
+    window_seconds: Optional[int] = 300
+    group_id: Optional[str] = None
+    medications: List[SlotMedicationItem] = []
 
 
 class ScheduleUpdate(BaseModel):
-    """
-    Schedule update data.
-    Will be used to update an existing schedule in the AWS database.
-    """
-    planned_time:    Optional[str]  = None
-    dosage_quantity: Optional[int]  = None
-    is_active:       Optional[bool] = None
-    end_date:        Optional[str]  = None
-
+    planned_time: Optional[str] = None
+    frequency_type: Optional[str] = None
+    week_days: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    window_seconds: Optional[int] = None
+    medications: Optional[List[SlotMedicationItem]] = None
 
 
 @router.get("/{patient_id}")
 def get_patient_schedules(patient_id: str, aws=Depends(get_aws)):
-    """
-    Get active medication schedules for a patient from AWS database.
-    AWS schedules table doesn't have patient_id due to normalization, 
-    So we need to join with medications and patients to get the patient_id.
-    """
     cur = aws.cursor()
     cur.execute("""
         SELECT
             ms.schedule_id,
+            ms.slot_id,
+            ms.patient_id,
             ms.planned_time,
-            ms.dosage_quantity,
+            ms.frequency_type,
+            ms.week_days,
             ms.is_active,
             ms.start_date,
             ms.end_date,
-            m.medication_name,
-            m.remaining_count
+            ms.window_seconds,
+            ms.group_id,
+            COALESCE(sb.status, 'empty') AS slot_status
         FROM medication_schedules ms
-        JOIN medications m ON ms.medication_id = m.medication_id
-        WHERE m.patient_id = %s
+        LEFT JOIN slot_bindings sb ON sb.slot_id = ms.slot_id
+        WHERE ms.patient_id = %s
           AND ms.is_active = TRUE
           AND ms.start_date <= CURRENT_DATE
           AND (ms.end_date IS NULL OR ms.end_date >= CURRENT_DATE)
         ORDER BY ms.planned_time
     """, (patient_id,))
-
     schedules = cur.fetchall()
 
-    if not schedules:
-        raise HTTPException(
-            status_code=404,
-            detail="No active schedules found for this patient"
-        )
+    result = []
+    for s in schedules:
+        cur.execute("""
+            SELECT medication_id, medication_name, target_count, loaded_count
+            FROM slot_medications
+            WHERE slot_id = %s AND patient_id = %s
+        """, (s["slot_id"], patient_id))
+        meds = cur.fetchall()
+        row = dict(s)
+        row["planned_time"] = str(s["planned_time"])
+        row["start_date"] = str(s["start_date"]) if s["start_date"] else None
+        row["end_date"] = str(s["end_date"]) if s["end_date"] else None
+        row["medications"] = [dict(m) for m in meds]
+        result.append(row)
 
-    return {"schedules": [dict(s) for s in schedules]}
+    return {"schedules": result}
 
 
 @router.post("")
 @router.post("/")
 def create_schedule(schedule: ScheduleCreate, aws=Depends(get_aws)):
-    """Creates a new schedule for an existing medication in the AWS database."""
     cur = aws.cursor()
+
+    cur.execute("""
+        INSERT INTO slot_bindings (slot_id, patient_id, status, updated_at)
+        VALUES (%s, %s, 'empty', NOW())
+        ON CONFLICT (slot_id) DO UPDATE
+        SET patient_id = EXCLUDED.patient_id,
+            status     = EXCLUDED.status,
+            updated_at = NOW()
+    """, (schedule.slot_id, schedule.patient_id))
+
+    if schedule.medications:
+        cur.execute(
+            "DELETE FROM slot_medications WHERE slot_id = %s AND patient_id = %s",
+            (schedule.slot_id, schedule.patient_id),
+        )
+        for med in schedule.medications:
+            cur.execute("""
+                INSERT INTO slot_medications
+                    (slot_id, patient_id, medication_id, medication_name,
+                     target_count, loaded_count)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                schedule.slot_id,
+                schedule.patient_id,
+                med.medication_id,
+                med.medication_name,
+                med.target_count,
+                med.loaded_count,
+            ))
+
+    medication_id = schedule.medications[0].medication_id if schedule.medications else None
+
     cur.execute("""
         INSERT INTO medication_schedules
-            (medication_id, planned_time, dosage_quantity, is_active, start_date, end_date)
-        VALUES (%s, %s::time, %s, %s, %s::date, %s::date)
+            (medication_id, patient_id, slot_id, planned_time, frequency_type,
+             week_days, is_active, start_date, end_date, window_seconds, group_id)
+        VALUES (%s, %s, %s, %s::time, %s, %s, TRUE, %s::date, %s::date, %s, %s)
         RETURNING schedule_id, planned_time
     """, (
-        schedule.medication_id,
+        medication_id,
+        schedule.patient_id,
+        schedule.slot_id,
         schedule.planned_time,
-        schedule.dosage_quantity,
-        schedule.is_active,
+        schedule.frequency_type,
+        schedule.week_days or "",
         schedule.start_date,
         schedule.end_date,
+        schedule.window_seconds or 300,
+        schedule.group_id,
     ))
-    aws.commit()
     result = cur.fetchone()
+
+    if schedule.medications:
+        all_loaded = all(
+            m.loaded_count >= m.target_count for m in schedule.medications
+        )
+        if all_loaded:
+            cur.execute("""
+                UPDATE slot_bindings SET status = 'loaded', updated_at = NOW()
+                WHERE slot_id = %s
+            """, (schedule.slot_id,))
+
+    aws.commit()
+
     return {
-        "message":     "Schedule created",
+        "message": "Schedule created",
         "schedule_id": str(result["schedule_id"]),
         "planned_time": str(result["planned_time"]),
     }
 
 
-@router.put("/{schedule_id}")
-def update_schedule(schedule_id: str, schedule: ScheduleUpdate, aws=Depends(get_aws)):
-    """Updates the existing schedule's information."""
+@router.put("/group/{group_id}")
+def update_schedule_group(group_id: str, schedule: ScheduleUpdate, aws=Depends(get_aws)):
     cur = aws.cursor()
     cur.execute("""
         UPDATE medication_schedules SET
-            planned_time    = COALESCE(%s::time, planned_time),
-            dosage_quantity = COALESCE(%s, dosage_quantity),
-            is_active       = COALESCE(%s, is_active),
-            end_date        = COALESCE(%s::date, end_date)
-        WHERE schedule_id = %s
-        RETURNING schedule_id, planned_time
+            planned_time   = COALESCE(%s::time, planned_time),
+            frequency_type = COALESCE(%s, frequency_type),
+            week_days      = COALESCE(%s, week_days),
+            start_date     = COALESCE(%s::date, start_date),
+            end_date       = COALESCE(%s::date, end_date),
+            window_seconds = COALESCE(%s, window_seconds)
+        WHERE group_id = %s
+        RETURNING schedule_id
     """, (
         schedule.planned_time,
-        schedule.dosage_quantity,
-        schedule.is_active,
+        schedule.frequency_type,
+        schedule.week_days,
+        schedule.start_date,
         schedule.end_date,
+        schedule.window_seconds,
+        group_id,
+    ))
+    aws.commit()
+    rows = cur.fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return {"message": "Group updated", "group_id": group_id, "updated": len(rows)}
+
+
+@router.put("/{schedule_id}")
+def update_schedule(schedule_id: str, schedule: ScheduleUpdate, aws=Depends(get_aws)):
+    cur = aws.cursor()
+    cur.execute("""
+        UPDATE medication_schedules SET
+            planned_time   = COALESCE(%s::time, planned_time),
+            frequency_type = COALESCE(%s, frequency_type),
+            week_days      = COALESCE(%s, week_days),
+            start_date     = COALESCE(%s::date, start_date),
+            end_date       = COALESCE(%s::date, end_date),
+            window_seconds = COALESCE(%s, window_seconds)
+        WHERE schedule_id = %s
+        RETURNING schedule_id
+    """, (
+        schedule.planned_time,
+        schedule.frequency_type,
+        schedule.week_days,
+        schedule.start_date,
+        schedule.end_date,
+        schedule.window_seconds,
         schedule_id,
     ))
     aws.commit()
     result = cur.fetchone()
-
     if not result:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return {"message": "Schedule updated", "schedule_id": str(result["schedule_id"])}
 
 
-@router.delete("/{schedule_id}")
-def delete_schedule(schedule_id: str, aws=Depends(get_aws)):
-    """Deletes the schedule."""
+@router.patch("/group/{group_id}/active")
+def toggle_schedule_group(group_id: str, aws=Depends(get_aws)):
     cur = aws.cursor()
-    cur.execute("DELETE FROM medication_schedules WHERE schedule_id = %s RETURNING schedule_id", (schedule_id,))
+    cur.execute("""
+        UPDATE medication_schedules
+        SET is_active = NOT is_active
+        WHERE group_id = %s
+        RETURNING is_active
+    """, (group_id,))
+    aws.commit()
+    rows = cur.fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return {"message": "Group toggled", "is_active": rows[0]["is_active"]}
+
+
+@router.patch("/{schedule_id}/active")
+def toggle_schedule(schedule_id: str, aws=Depends(get_aws)):
+    cur = aws.cursor()
+    cur.execute("""
+        UPDATE medication_schedules
+        SET is_active = NOT is_active
+        WHERE schedule_id = %s
+        RETURNING is_active
+    """, (schedule_id,))
     aws.commit()
     result = cur.fetchone()
-    
+    if not result:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return {"message": "Schedule toggled", "is_active": result["is_active"]}
+
+
+@router.delete("/group/{group_id}")
+def delete_schedule_group(group_id: str, aws=Depends(get_aws)):
+    cur = aws.cursor()
+    cur.execute("""
+        DELETE FROM medication_schedules WHERE group_id = %s
+        RETURNING schedule_id
+    """, (group_id,))
+    aws.commit()
+    rows = cur.fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return {"message": "Group deleted", "deleted": len(rows)}
+
+
+@router.delete("/{schedule_id}")
+def delete_schedule(schedule_id: str, aws=Depends(get_aws)):
+    cur = aws.cursor()
+    cur.execute("""
+        DELETE FROM medication_schedules WHERE schedule_id = %s
+        RETURNING schedule_id
+    """, (schedule_id,))
+    aws.commit()
+    result = cur.fetchone()
     if not result:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return {"message": "Schedule deleted", "schedule_id": schedule_id}

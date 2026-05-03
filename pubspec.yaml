@@ -46,6 +46,10 @@ dependencies:
   # ── Barcode scanning (camera-based) ─────────────────────────────────────────
   mobile_scanner: ^6.0.2
 
+  # ── Kinesis Video (HLS live feed in app) ────────────────────────────────────
+  video_player: ^2.9.2
+  chewie: ^1.8.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

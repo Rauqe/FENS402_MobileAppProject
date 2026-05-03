@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// Pi Flask API base URL.
-const String kPiBaseUrl = 'http://172.20.10.3:5000';
+const String kPiBaseUrl = 'http://192.168.0.16:5000';
 const Duration _kPollInterval = Duration(seconds: 2);
 const Duration _kTimeout = Duration(seconds: 3);
 

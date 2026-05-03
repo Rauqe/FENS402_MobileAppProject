@@ -8,10 +8,14 @@ class AppSession {
 
   Patient? currentPatient;
   bool isCaregiver = false;
+  String? caregiverId;
+  String? caregiverEmail;
 
-  void loginAsCaregiver() {
+  void loginAsCaregiver({String? id, String? email}) {
     isCaregiver = true;
     currentPatient = null;
+    caregiverId = id;
+    caregiverEmail = email;
   }
 
   void loginAsPatient(Patient patient) {
@@ -22,6 +26,8 @@ class AppSession {
   void logout() {
     isCaregiver = false;
     currentPatient = null;
+    caregiverId = null;
+    caregiverEmail = null;
   }
 
   String? get currentPatientId => currentPatient?.patientId;

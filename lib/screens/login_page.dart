@@ -59,7 +59,11 @@ class _LoginPageState extends State<LoginPage> {
       try {
         final token = await FirebaseMessaging.instance.getToken();
         if (token != null) {
-          await ApiService.registerFcmToken(token, email: email);
+          await ApiService.registerFcmToken(
+            token,
+            email: email,
+            role: result.isCaregiver ? 'caregiver' : 'patient',
+          );
           debugPrint('[FCM] Token registered for $email');
         }
       } catch (e) {
@@ -67,7 +71,10 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       if (result.isCaregiver) {
-        AppSession.instance.loginAsCaregiver();
+        AppSession.instance.loginAsCaregiver(
+          id: result.caregiverId,
+          email: email,
+        );
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const CaregiverDashboard()),
           (_) => false,

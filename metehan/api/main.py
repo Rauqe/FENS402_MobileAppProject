@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from mangum import Mangum
 from api.database import init_db, close_db
-from api.routers import patients, schedules, dispensing, sync, medications, kvs_live, risk_notification, notifications, auth_routes
+from api.routers import patients, schedules, slots, dispensing, sync, medications, kvs_live, risk_notification, notifications, auth_routes
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -30,6 +30,7 @@ app.add_middleware(
 
 app.include_router(patients.router, prefix="/patients", tags=["Patients"])
 app.include_router(schedules.router, prefix="/schedules", tags=["Schedules"])
+app.include_router(slots.router, prefix="/slots", tags=["Slots"])
 app.include_router(dispensing.router, prefix="/dispensing-logs", tags=["Dispensing"])
 app.include_router(sync.router, prefix="/sync", tags=["Sync"])
 app.include_router(medications.router, prefix="/medications", tags=["Medications"])

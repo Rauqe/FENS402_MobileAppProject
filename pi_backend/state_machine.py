@@ -18,6 +18,12 @@ Thread-safe: all public methods are guarded by threading.Lock.
 from __future__ import annotations
 
 import os
+import sys
+
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import time
 import uuid
 import sqlite3
@@ -29,7 +35,7 @@ from typing import Optional, Callable, List, Dict, Any
 
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-LOCAL_DB = os.path.join(_SCRIPT_DIR, "faces.db")
+LOCAL_DB = os.environ.get("FACES_DB", os.path.join(_SCRIPT_DIR, "faces.db"))
 
 
 TOTAL_SLOTS = 14
@@ -699,9 +705,9 @@ class DispenserStateMachine:
 
         def _face_auth_worker():
             try:
-                from face_auth_headless import authenticate_user
+                from face_authentication.headless_auth import authenticate_user
             except ImportError:
-                _log("face_auth_headless not available — face auth disabled")
+                _log("face_authentication.headless_auth not available — face auth disabled")
                 return
 
             while not self._auth_cancel.is_set():

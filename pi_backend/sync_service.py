@@ -22,7 +22,7 @@ from typing import Any, Optional
 _log = logging.getLogger("sync_service")
 
 _SCRIPT_DIR = Path(__file__).parent
-DB_PATH     = _SCRIPT_DIR / "faces.db"
+DB_PATH     = Path(os.environ.get("FACES_DB", str(_SCRIPT_DIR / "faces.db")))
 STATE_FILE  = _SCRIPT_DIR / "sync_state.json"
 
 
